@@ -3,7 +3,7 @@ import pLimit from "p-limit";
 import satori from "satori";
 import sharp from "sharp";
 import { AvatarGrid } from "./image";
-import { generateNoDonorsImage } from "./messages";
+import { generateNoDonors, generateNotFound } from "./messages";
 
 const avatarCache = new Map();
 const CACHE_TTL = 1000 * 60 * 60 * 24; // 24h
@@ -73,9 +73,11 @@ async function generateAvatarGridImage(
   if (avatarUrls.length === 0) {
     console.log("No avatars found, generating empty image");
     const response = await fetch(`http://hcb.hackclub.com/api/v3/organizations/${orgSlug}`);
+    if (response.status === 404) {
+      return await generateNotFound(orgSlug);
+    }
     const orgData = await response.json();
-    const orgName = orgData.name || orgSlug;
-    return await generateNoDonorsImage(orgName);
+    return await generateNoDonors(orgData.name);
   }
 
   const svg = await satori(
