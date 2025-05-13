@@ -58,7 +58,7 @@ const app = new Hono();
 
 app.get("/:orgslug", async (c) => {
   const orgSlug = c.req.param("orgslug");
-  const iconSize = Number(c.req.query("icon_size")) ?? 64;
+  const iconSize = Number(c.req.query("icon_size")) || 64;
   const gap = Number(c.req.query("gap")) || 12;
   console.log(`Generating avatar grid for org: ${orgSlug}, icon size: ${iconSize}, gap: ${gap}`);
 
