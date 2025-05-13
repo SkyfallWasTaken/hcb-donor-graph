@@ -68,7 +68,7 @@ app.get("/:orgslug", async (c) => {
     fetches.push(
       fetch(`https://hcb.hackclub.com/api/v3/organizations/${orgSlug}/donations?per_page=100&page=${i}`)
         .then(res => res.json())
-        .then(data => data.map((donation: any) => donation.donor.avatar.replace("/128/", `/${iconSize}/`)).filter(Boolean))
+        .then(data => data.map((donation: any) => donation.donor?.avatar?.replace("/128/", `/${iconSize}/`)).filter(Boolean))
     );
   }
   const pages = await Promise.all(fetches);
