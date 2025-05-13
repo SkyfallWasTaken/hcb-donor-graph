@@ -3,7 +3,7 @@ import pLimit from "p-limit";
 import satori from "satori";
 import sharp from "sharp";
 import { AvatarGrid } from "./image";
-import generateNoDonorsImage from "./no-donors";
+import { generateNoDonorsImage } from "./messages";
 
 const avatarCache = new Map();
 const CACHE_TTL = 1000 * 60 * 60 * 24; // 24h
@@ -157,7 +157,7 @@ app.get("/:orgslug", async (c) => {
   console.timeEnd("generateImage");
 
   c.header("Content-Type", "image/png");
-  // c.header("Cache-Control", "public, max-age=43200, must-revalidate");
+  c.header("Cache-Control", "public, max-age=43200, must-revalidate");
   return c.body(img);
 });
 
