@@ -117,7 +117,7 @@ app.get("/:orgslug", async c => {
   console.timeEnd("generateImage")
 
   c.header("Content-Type", "image/png")
-  c.header("Cache-Control", "public, max-age=31536000, immutable")
+  c.header('Cache-Control', 'public, max-age=43200, must-revalidate');
   return c.body(img)
 })
 
