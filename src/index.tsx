@@ -38,7 +38,7 @@ app.get("/:orgslug", async (c) => {
   const orgSlug = c.req.param("orgslug");
   const response = await fetch(`https://hcb.hackclub.com/api/v3/organizations/${orgSlug}/donations`)
   const data = await response.json();
-  const avatarUrls = [...new Set(data.map((donation: any) => donation.avatar))].filter(Boolean);
+  const avatarUrls = [...new Set(data.map((donation: any) => donation.donor.avatar))].filter(Boolean);
   c.header('Content-Type', 'image/png');
   return c.body(await generateAvatarGridImage(avatarUrls as string[]));
 });
