@@ -2,8 +2,8 @@
 
 Create a donor graph for transparent HCB organisations.
 
-<img src="http://p8c004g4ws8884sk4wgkkwgw.37.27.245.191.sslip.io/htop?icon_size=240" width="200">
-<sub>htop's donor graph</sub>
+<img src="https://graph.hcb.hackclub.com/hq?icon_size=240" width="200">
+<sub>Hack Club HQ's donor graph</sub>
 
 ## Docs
 
