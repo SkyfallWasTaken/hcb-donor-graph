@@ -1,30 +1,69 @@
-import { Hono } from "hono";
-import satori from "satori";
-import { Resvg } from "@resvg/resvg-js";
-import { AvatarGrid } from "./image";
+import { Hono } from "hono"
+import pLimit from "p-limit"
+import satori from "satori"
+import sharp from "sharp"
+import { AvatarGrid } from "./image"
 
-// In-memory cache: Map<url, { base64: string, expiresAt: number }>
-const avatarCache = new Map<string, { base64: string; expiresAt: number }>();
-const TIMEOUT = 1000 * 60 * 60 * 24;
+const avatarCache = new Map()
+const CACHE_TTL = 1000 * 60 * 60 * 24 // 24h
 
-async function fetchAvatarBase64(url: string): Promise<string> {
-  const cached = avatarCache.get(url);
-  const now = Date.now();
+// Concurrency & retry settings
+const CONCURRENCY = 50
+const MAX_RETRIES = 3
+const INITIAL_BACKOFF = 500 // ms
 
+const limit = pLimit(CONCURRENCY)
+
+async function fetchAvatarBase64(url: string, attempt = 1) {
+  // Check cache first
+  const now = Date.now()
+  const cached = avatarCache.get(url)
   if (cached && cached.expiresAt > now) {
-    return cached.base64;
+    return cached.base64
   }
 
-  console.log(`Cachedasdasdad avatar: ${url}`);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
-  const buffer = await res.arrayBuffer();
-  const mime = res.headers.get("content-type") || "image/png";
-  const base64 = `data:${mime};base64,${Buffer.from(buffer).toString("base64")}`;
+  try {
+    const res = await fetch(url)
+    if (res.status === 429 && attempt <= MAX_RETRIES) {
+      // Rate-limited: back off then retry
+      const retryAfter = Number(res.headers.get("Retry-After") || 1) * 1000
+      const backoff = Math.max(INITIAL_BACKOFF * attempt, retryAfter)
+      console.warn(`429 on ${url}, retrying after ${backoff}ms (attempt ${attempt})`)
+      await new Promise(r => setTimeout(r, backoff))
+      return fetchAvatarBase64(url, attempt + 1)
+    }
+    if (!res.ok) {
+      // Other HTTP errors
+      throw new Error(`HTTP ${res.status}`)
+    }
 
-  avatarCache.set(url, { base64, expiresAt: now + TIMEOUT });
-  console.log(`Cached avatar: ${url}`);
-  return base64;
+    const buffer = await res.arrayBuffer()
+    const mime = res.headers.get("Content-Type") || "image/png"
+    const base64 = `data:${mime};base64,${Buffer.from(buffer).toString("base64")}`
+    avatarCache.set(url, { base64, expiresAt: now + CACHE_TTL })
+    return base64
+
+  } catch (err) {
+    if (attempt < MAX_RETRIES) {
+      const backoff = INITIAL_BACKOFF * Math.pow(2, attempt - 1)
+      console.warn(`Error fetching ${url} (${err}), retrying in ${backoff}ms`)
+      await new Promise(r => setTimeout(r, backoff))
+      return fetchAvatarBase64(url, attempt + 1)
+    }
+    // If we reach here, we've exhausted our retries
+    console.error(`Failed to fetch ${url} after ${attempt} attempts:`, err)
+    throw err
+  }
+}
+
+async function downloadAllAvatars(urls: string[]) {
+  const tasks = urls.map(url =>
+    limit(() =>
+      fetchAvatarBase64(url).catch(() => null)
+    )
+  )
+  const results = await Promise.all(tasks)
+  return results.filter(b => b !== null)
 }
 
 async function generateAvatarGridImage(iconSize: number, gap: number, avatarUrls: string[]) {
@@ -37,69 +76,55 @@ async function generateAvatarGridImage(iconSize: number, gap: number, avatarUrls
       imageHeight={1080}
       backgroundColor="#222222"
     />,
-    {
-      width: 1200,
-      height: 1080,
-      fonts: [],
-    }
-  );
+    { width: 1200, height: 1080, fonts: [] }
+  )
 
-  const resvg = new Resvg(svg, {
-    background: 'rgba(255, 255, 255, .0)',
-    fitTo: {
-      mode: 'width',
-      value: 1200,
-    },
-  });
-  return resvg.render().asPng();
+  return sharp(Buffer.from(svg))
+    .resize(1200, 1080)
+    .png({ quality: 100 })
+    .toBuffer()
 }
 
-const app = new Hono();
+const app = new Hono()
 
-app.get("/:orgslug", async (c) => {
-  const orgSlug = c.req.param("orgslug");
-  const iconSize = Number(c.req.query("icon_size")) || 64;
-  const gap = Number(c.req.query("gap")) || 12;
-  console.log(`Generating avatar grid for org: ${orgSlug}, icon size: ${iconSize}, gap: ${gap}`);
+app.get("/:orgslug", async c => {
+  const orgSlug = c.req.param("orgslug")
+  const iconSize = Number(c.req.query("icon_size")) || 64
+  const gap = Number(c.req.query("gap")) || 12
 
-  console.time("fetchAllPages");
-  const fetches = [];
-  for (let i = 1; i <= 15; i++) {
-    fetches.push(
-      fetch(`https://hcb.hackclub.com/api/v3/organizations/${orgSlug}/donations?per_page=100&page=${i}`)
-        .then(res => res.json())
-        .then(data => data.map((donation: any) => donation.donor?.avatar?.replace("/128/", `/${iconSize}/`)).filter(Boolean))
-    );
-  }
-  const pages = await Promise.all(fetches);
-  const avatarUrls = [...new Set(pages.flat())];
-  console.timeEnd("fetchAllPages");
+  console.log(`Generating grid for ${orgSlug}, size ${iconSize}, gap ${gap}`)
 
-  console.time("downloadAvatars");
-  const avatarsBase64: string[] = [];
-  for (const url of avatarUrls) {
-    try {
-      const base64 = await fetchAvatarBase64(url);
-      avatarsBase64.push(base64);
-    } catch (err) {
-      console.warn(`Failed to download avatar: ${url}`);
-    }
-  }
-  console.timeEnd("downloadAvatars");
+  // Fetch donation pages in parallel
+  const pageFetches = Array.from({ length: 15 }, (_, i) =>
+    fetch(`https://hcb.hackclub.com/api/v3/organizations/${orgSlug}/donations?per_page=100&page=${i + 1}`)
+      .then(r => r.json())
+      .then(data =>
+        data
+          .map((d: any) => d.donor?.avatar?.replace("/128/", `/${iconSize}/`))
+          .filter(Boolean)
+      )
+      .catch(() => [])
+  )
+  const pages = await Promise.all(pageFetches)
+  const avatarUrls = [...new Set(pages.flat())]
 
-  console.time("generateAvatarGridImage");
-  c.header('Content-Type', 'image/png');
-  c.header('Cache-Control', 'public, max-age=31536000, immutable');
-  const img = await generateAvatarGridImage(iconSize, gap, avatarsBase64);
-  console.timeEnd("generateAvatarGridImage");
+  console.time("downloadAvatars")
+  const avatarsBase64 = await downloadAllAvatars(avatarUrls)
+  console.timeEnd("downloadAvatars")
 
-  return c.body(img);
-});
+  console.time("generateImage")
+  const img = await generateAvatarGridImage(iconSize, gap, avatarsBase64)
+  console.timeEnd("generateImage")
 
-app.get("*", (c) => c.redirect("https://github.com/hackclub/hcb-donor-graph"))
+  c.header("Content-Type", "image/png")
+  c.header("Cache-Control", "public, max-age=31536000, immutable")
+  return c.body(img)
+})
+
+app.get("*", c => c.redirect("https://github.com/hackclub/hcb-donor-graph"))
 
 Bun.serve({
   fetch: app.fetch,
   idleTimeout: 60,
-});
-console.log("Server running on http://localhost:3000");
+})
+console.log("Server running on http://localhost:3000")

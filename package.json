@@ -5,10 +5,11 @@
     "start": "bun run src/index.tsx"
   },
   "dependencies": {
-    "@resvg/resvg-js": "^2.6.2",
     "hono": "^4.7.9",
+    "p-limit": "^6.2.0",
     "react": "^19.1.0",
-    "satori": "^0.13.0"
+    "satori": "^0.13.0",
+    "sharp": "^0.34.1"
   },
   "devDependencies": {
     "@types/bun": "latest",
