@@ -96,6 +96,8 @@ app.get("/:orgslug", async (c) => {
   return c.body(img);
 });
 
+app.get("*", (c) => c.redirect("https://github.com/hackclub/hcb-donor-graph"))
+
 Bun.serve({
   fetch: app.fetch,
   idleTimeout: 60,
