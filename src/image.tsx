@@ -5,8 +5,6 @@ interface AvatarGridProps {
     avatarSize?: number;
     gap?: number;
     columns?: number;
-    imageWidth?: number;
-    imageHeight?: number;
     backgroundColor?: string;
 }
 
@@ -14,8 +12,6 @@ export const AvatarGrid = ({
     avatarUrls,
     avatarSize = 60,
     gap = 8,
-    imageWidth = 1200,
-    imageHeight = 1080,
     backgroundColor = "#1a1a1a",
 }: AvatarGridProps) => {
     const containerStyle: React.CSSProperties = {
@@ -43,8 +39,6 @@ export const AvatarGrid = ({
         <div
             style={{
                 display: "flex",
-                width: `${imageWidth}px`,
-                height: `${imageHeight}px`,
                 backgroundColor: backgroundColor,
                 alignItems: "center",
                 justifyContent: "center",
