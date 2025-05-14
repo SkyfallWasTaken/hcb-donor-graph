@@ -106,6 +106,7 @@ app.get("/:orgslug", async (c) => {
   console.log(`Generating grid for ${orgSlug}, size ${iconSize}, gap ${gap} `);
 
   // fetch donation pages in parallel
+  console.time("fetchDonations");
   const pageFetches = Array.from({ length: 15 }, (_, i) =>
     fetch(
       `https://hcb.hackclub.com/api/v3/organizations/${orgSlug}/donations?per_page=100&page=${i + 1}`
@@ -119,6 +120,7 @@ app.get("/:orgslug", async (c) => {
       .catch(() => [])
   );
   const pages = await Promise.all(pageFetches);
+  console.timeEnd("fetchDonations");
 
   // don't download more avatars than we need
   const allAvatarUrls = [...new Set(pages.flat())];
